@@ -196,7 +196,6 @@ bool BroadcastWork(
     int leftInLDS = max((int)GROUP_SIZE - (int)(groupOffset - workCount), 0);
     int actualWorkCount = min(leftInLDS, workCount);
     gs_BroadcastLocalCount[groupThreadIndex] = actualWorkCount;
-
     
     GroupMemoryBarrierWithGroupSync();
 

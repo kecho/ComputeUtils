@@ -4,8 +4,9 @@ import numpy as nm
 ## Compute Utils Test Script ##
 
 #variables
-g_layout_workloads = [54, 34, 29, 69, 29, 77, 8]
-g_round_count = 3450
+g_layout_workloads = [540, 340, 299, 689, 229, 770, 8]
+g_round_count = 8450
+#g_round_count = 500
 g_instance_count = len(g_layout_workloads) * g_round_count 
 g_total_output_count = sum(g_layout_workloads) * g_round_count;
 print ("instances: %d output: %d" % (g_instance_count, g_total_output_count))
@@ -37,6 +38,9 @@ g_init_shader.resolve()
 g_distribute_shader = g.Shader(file = "ComputeUtilsTests.hlsl", main_function = "DistributeMain")
 g_distribute_shader.resolve()
 
+g_distribute_naive_shader = g.Shader(file = "ComputeUtilsTests.hlsl", main_function = "DistributeNaiveMain")
+g_distribute_naive_shader.resolve()
+
 work_layout_buffer = g.Buffer(type=g.BufferType.Raw, element_count=len(g_layout_workloads))
 work_buffer = g.Buffer(type=g.BufferType.Raw, element_count = g_instance_count * 2)
 
@@ -44,10 +48,15 @@ counter_buffer = g.Buffer(type=g.BufferType.Raw, element_count = 1)
 output_counter_buffer = g.Buffer(type=g.BufferType.Raw, element_count = 1)
 output_buffer = g.Buffer(type=g.BufferType.Raw, element_count = g_total_output_count * 2)
 
+output_naive_counter_buffer = g.Buffer(type=g.BufferType.Raw, element_count = 1)
+output_naive_buffer = g.Buffer(type=g.BufferType.Raw, element_count = g_total_output_count * 2)
+
 debug_counter_buffer = g.Buffer(type=g.BufferType.Raw, element_count = 1)
 debug_buffer = g.Buffer(type=g.BufferType.Raw, element_count = 400 * 4)
 
 cmd = g.CommandList()
+
+g.begin_collect_markers()
 
 cmd.upload_resource(
     source = g_layout_workloads, 
@@ -61,6 +70,10 @@ cmd.upload_resource(
     source = [0], 
     destination = output_counter_buffer)
 
+cmd.upload_resource(
+    source = [0], 
+    destination = output_naive_counter_buffer)
+
 cmd.dispatch(
     constants = [ int(g_instance_count), int(len(g_layout_workloads)), int(0), int(0)],
     inputs = work_layout_buffer,
@@ -70,19 +83,44 @@ cmd.dispatch(
     y = 1,
     z = 1)
 
+cmd.begin_marker("GroupDistribute")
 cmd.dispatch(
     constants = [ int(g_instance_count), int(0), int(0), int(0)],
     inputs = work_buffer,
     outputs = [counter_buffer, output_buffer, output_counter_buffer, debug_buffer, debug_counter_buffer],
     shader = g_distribute_shader,
-    x = 1024,
+    x = 3500,
     y = 1,
     z = 1)
+cmd.end_marker()
+
+cmd.begin_marker("GroupDistributeNaive")
+cmd.dispatch(
+    constants = [ int(g_instance_count), int(0), int(0), int(0)],
+    inputs = work_buffer,
+    outputs = [counter_buffer, output_naive_buffer, output_naive_counter_buffer, debug_buffer, debug_counter_buffer],
+    shader = g_distribute_naive_shader,
+    x = int((g_instance_count + 63)/64),
+    y = 1,
+    z = 1)
+cmd.end_marker()
 
 g.schedule(cmd)
 
+marker_results = g.end_collect_markers()
+gpu_timestamps = load_gpu_buffer(marker_results.timestamp_buffer, nm.uint64)
+perf_data = [(name, (gpu_timestamps[ets] - gpu_timestamps[bts])/marker_results.timestamp_frequency)  for (name, p, bts, ets) in marker_results.markers]
+print (perf_data)
+
 # Output
+"""
 output_counter_buffer_readback = load_gpu_buffer(output_counter_buffer)[0]
 output_buffer_readback = load_gpu_buffer(output_buffer)
-print("Received: %d" % output_counter_buffer_readback)
+print("Distributed Received: %d" % output_counter_buffer_readback)
 print(test_broadcast_work(g_layout_workloads, g_round_count, output_buffer_readback, output_counter_buffer_readback))
+
+output_counter_buffer_readback = load_gpu_buffer(output_naive_counter_buffer)[0]
+output_buffer_readback = load_gpu_buffer(output_naive_buffer)
+print("Distributed Naive Received: %d" % output_counter_buffer_readback)
+print(test_broadcast_work(g_layout_workloads, g_round_count, output_buffer_readback, output_counter_buffer_readback))
+"""

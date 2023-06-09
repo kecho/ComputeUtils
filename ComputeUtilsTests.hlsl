@@ -105,3 +105,17 @@ void DistributeMain(
     }
 }
 
+[numthreads(GROUP_SIZE, 1, 1)]
+void DistributeNaiveMain(
+    uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+    if (dispatchThreadID.x >= g_InstanceCount)
+        return;
+    
+    uint2 instanceJob = g_InputBuffer.Load2(dispatchThreadID.x << 3);
+    uint outputOffset;
+    g_OutputCounter.InterlockedAdd(0, instanceJob.y, outputOffset);
+    for (uint i = 0; i < instanceJob.y; ++i)
+        g_OutputBuffer.Store((outputOffset + i) << 3, uint2(instanceJob.x, i));
+}
+
